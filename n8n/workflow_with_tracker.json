@@ -1,0 +1,180 @@
+{
+  "name": "アプリ1 反響対応(workflow-tracker 組み込み例)",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "反響メール受信(IMAP)",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8010/traces/start",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ n8n_workflow_id: $workflow.id, n8n_workflow_name: $workflow.name, n8n_execution_id: $execution.id, summary: '反響メール受信により開始' }) }}"
+      },
+      "name": "Tracker: ワークフロー開始",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "notes": "【記録タイミング1】trace_id が採番されて返る。以降のノードは $('Tracker: ワークフロー開始').item.json.trace_id を参照できる"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8001/agent/inquiry",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ email_body: $json.textPlain, execution_id: $execution.id, trace_id: $('Tracker: ワークフロー開始').item.json.trace_id }) }}",
+        "options": { "response": { "response": { "neverError": true } } }
+      },
+      "name": "反響対応API(LangGraph)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0],
+      "notes": "LangGraph 側は agent_invoked / agent_finished を自分で記録する(TrackerClient)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8010/events",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ n8n_execution_id: $execution.id, source: 'n8n', event_type: 'node_finished', result: $json.error ? 'error' : 'ok', node_name: '反響対応API(LangGraph)', summary: 'LangGraph 呼び出し完了 intent=' + ($json.intent || '-'), error_message: $json.error ? String($json.error) : null }) }}"
+      },
+      "name": "Tracker: API呼び出し完了",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0],
+      "notes": "【記録タイミング2】ノード処理が済むたびに記録。エラー時は result=error + error_message"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            { "value1": "={{ $('反響対応API(LangGraph)').item.json.needs_human }}", "value2": true }
+          ]
+        }
+      },
+      "name": "承認要否で分岐(IF)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [880, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8010/events",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ n8n_execution_id: $execution.id, source: 'n8n', event_type: 'status_changed', node_name: '承認要否で分岐(IF)', summary: 'Slack 承認待ちに遷移', payload: { status: 'waiting_human' } }) }}"
+      },
+      "name": "Tracker: 承認待ちへ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, -100],
+      "notes": "【記録タイミング4】状態変更。payload.status でトレース状態が waiting_human に変わる"
+    },
+    {
+      "parameters": { "text": "反響返信の承認をお願いします" },
+      "name": "Slackで承認依頼",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1320, -100],
+      "credentials": {}
+    },
+    {
+      "parameters": {},
+      "name": "承認を待つ(Wait)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1540, -100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8010/events",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ n8n_execution_id: $execution.id, source: 'n8n', event_type: 'status_changed', node_name: '承認を待つ(Wait)', summary: '承認されたため再開', payload: { status: 'running' } }) }}"
+      },
+      "name": "Tracker: 承認済みで再開",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, -100]
+    },
+    {
+      "parameters": {},
+      "name": "メール送信",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1980, 0],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8010/events",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ n8n_execution_id: $execution.id, source: 'n8n', event_type: 'node_finished', node_name: 'メール送信', summary: '顧客へ返信メールを送信' }) }}"
+      },
+      "name": "Tracker: メール送信完了",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2200, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8010/events",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ n8n_execution_id: $execution.id, source: 'n8n', event_type: 'workflow_finished', summary: '反響対応ワークフロー完了' }) }}"
+      },
+      "name": "Tracker: ワークフロー終了",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2420, 0],
+      "notes": "【記録タイミング5】終了。result=ok なら succeeded、error なら failed で確定"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8010/events",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ n8n_execution_id: $execution.id, source: 'n8n', event_type: 'workflow_finished', result: 'error', summary: 'ワークフローがエラーで停止', error_message: $json.error ? String($json.error.message || $json.error) : '不明なエラー' }) }}"
+      },
+      "name": "Tracker: エラー終了(Error Trigger から)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2420, 200],
+      "notes": "別途 Error Workflow(n8n-nodes-base.errorTrigger)から呼ぶ想定。実行が失敗したら failed で確定させる"
+    }
+  ],
+  "connections": {
+    "反響メール受信(IMAP)": { "main": [[{ "node": "Tracker: ワークフロー開始", "type": "main", "index": 0 }]] },
+    "Tracker: ワークフロー開始": { "main": [[{ "node": "反響対応API(LangGraph)", "type": "main", "index": 0 }]] },
+    "反響対応API(LangGraph)": { "main": [[{ "node": "Tracker: API呼び出し完了", "type": "main", "index": 0 }]] },
+    "Tracker: API呼び出し完了": { "main": [[{ "node": "承認要否で分岐(IF)", "type": "main", "index": 0 }]] },
+    "承認要否で分岐(IF)": {
+      "main": [
+        [{ "node": "Tracker: 承認待ちへ", "type": "main", "index": 0 }],
+        [{ "node": "メール送信", "type": "main", "index": 0 }]
+      ]
+    },
+    "Tracker: 承認待ちへ": { "main": [[{ "node": "Slackで承認依頼", "type": "main", "index": 0 }]] },
+    "Slackで承認依頼": { "main": [[{ "node": "承認を待つ(Wait)", "type": "main", "index": 0 }]] },
+    "承認を待つ(Wait)": { "main": [[{ "node": "Tracker: 承認済みで再開", "type": "main", "index": 0 }]] },
+    "Tracker: 承認済みで再開": { "main": [[{ "node": "メール送信", "type": "main", "index": 0 }]] },
+    "メール送信": { "main": [[{ "node": "Tracker: メール送信完了", "type": "main", "index": 0 }]] },
+    "Tracker: メール送信完了": { "main": [[{ "node": "Tracker: ワークフロー終了", "type": "main", "index": 0 }]] }
+  },
+  "settings": {},
+  "pinData": {}
+}

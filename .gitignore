@@ -1,0 +1,43 @@
+# 各アプリ配下の .gitignore と同じ方針をリポジトリ全体にも適用する。
+# (アプリを単体で切り出しても動くよう、appN_*/.gitignore にも同一内容を置いている)
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+build/
+dist/
+*.egg
+*.egg-info/
+
+# 仮想環境・環境変数
+.venv/
+venv/
+env/
+.env
+
+# ログ(ディレクトリ自体は .gitkeep で残す)
+logs/*
+!logs/.gitkeep
+*.log
+
+# 永続化ストレージ(ベクトルインデックス・生成物など)
+storage/*
+!storage/.gitkeep
+
+# テスト・型チェック・Lint のキャッシュ
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# LangGraph API(langgraph dev の生成物)
+.langgraph_api/
+
+# グラフ画像の出力(draw_mermaid_png)
+graph.png
+
+# エディタ・OS
+.idea/
+.DS_Store

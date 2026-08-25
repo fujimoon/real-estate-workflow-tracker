@@ -1,0 +1,31 @@
+[project]
+name = "real-estate-workflow-tracker"
+version = "0.1.0"
+description = "n8n のワークフローと LangChain/LangGraph の処理を1本のワークフローとして記録する統合トレーサ"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.115.12",
+    "uvicorn[standard]==0.34.0",
+    "pydantic==2.11.3",
+    "pydantic-settings==2.5.2",
+    "python-dotenv==1.0.1",
+    "httpx==0.28.1",
+    "langchain-core==0.3.49",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==8.3.4",
+]
+
+[tool.setuptools]
+packages = ["workflow_tracker"]
+
+# これが無いと uv がプロジェクトを venv にインストールせず、pytest から import できない
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
